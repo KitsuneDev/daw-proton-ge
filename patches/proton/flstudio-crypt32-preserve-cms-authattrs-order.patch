@@ -1,0 +1,97 @@
+From 02e880b148e4f4db8f2716cdbf248eced870306c Mon Sep 17 00:00:00 2001
+From: Kitsune <kitsune@akitsune.dev>
+Date: Sun, 30 Aug 2026 21:06:00 -0400
+Subject: [PATCH] crypt32: Verify CMS authenticated attributes in encoded order
+
+diff --git a/dlls/crypt32/msg.c b/dlls/crypt32/msg.c
+index fafa40444dd..ae5c84c5370 100644
+--- a/dlls/crypt32/msg.c
++++ b/dlls/crypt32/msg.c
+@@ -1098,6 +1098,66 @@ static BOOL CSignedMsgData_AppendMessageDigestAttribute(
+     return ret;
+ }
+ 
++/*
++ * Encode authenticated attributes without sorting the outer SET OF.
++ *
++ * CryptEncodeObjectEx(PKCS_ATTRIBUTES) DER-sorts the attributes.  That's
++ * correct when creating a signature, but Windows also verifies CMS messages
++ * whose signed attributes were emitted in a non-canonical order.  The decoder
++ * keeps their input order, so preserve that order when reconstructing the
++ * bytes hashed for verification.
++ *
++ * Each individual PKCS_ATTRIBUTE is still encoded normally, including the
++ * DER handling of its value SET.
++ */
++static BOOL CRYPT_EncodePKCSAttributesInOrder(const CRYPT_ATTRIBUTES *attrs,
++ BYTE **encoded, DWORD *size)
++{
++    DWORD i, content_size = 0, len_size, item_size;
++    BYTE *ptr;
++    BOOL ret = TRUE;
++
++    *encoded = NULL;
++    *size = 0;
++
++    for (i = 0; ret && i < attrs->cAttr; i++)
++    {
++        item_size = 0;
++        ret = CryptEncodeObjectEx(X509_ASN_ENCODING, PKCS_ATTRIBUTE,
++         &attrs->rgAttr[i], 0, NULL, NULL, &item_size);
++        if (ret)
++            content_size += item_size;
++    }
++    if (!ret)
++        return FALSE;
++
++    CRYPT_EncodeLen(content_size, NULL, &len_size);
++    *size = 1 + len_size + content_size;
++    if (!(*encoded = LocalAlloc(0, *size)))
++        return FALSE;
++
++    ptr = *encoded;
++    *ptr++ = ASN_CONSTRUCTOR | ASN_SETOF;
++    CRYPT_EncodeLen(content_size, ptr, &len_size);
++    ptr += len_size;
++
++    for (i = 0; ret && i < attrs->cAttr; i++)
++    {
++        item_size = *size - (DWORD)(ptr - *encoded);
++        ret = CryptEncodeObjectEx(X509_ASN_ENCODING, PKCS_ATTRIBUTE,
++         &attrs->rgAttr[i], 0, NULL, ptr, &item_size);
++        ptr += item_size;
++    }
++
++    if (!ret)
++    {
++        LocalFree(*encoded);
++        *encoded = NULL;
++        *size = 0;
++    }
++    return ret;
++}
++
+ typedef enum {
+     Sign,
+     Verify
+@@ -1136,9 +1196,14 @@ static BOOL CSignedMsgData_UpdateAuthenticatedAttributes(
+                 LPBYTE encodedAttrs;
+                 DWORD size;
+ 
+-                ret = CryptEncodeObjectEx(X509_ASN_ENCODING, PKCS_ATTRIBUTES,
+-                 &msg_data->info->rgSignerInfo[i].AuthAttrs,
+-                 CRYPT_ENCODE_ALLOC_FLAG, NULL, &encodedAttrs, &size);
++                if (flag == Verify)
++                    ret = CRYPT_EncodePKCSAttributesInOrder(
++                     &msg_data->info->rgSignerInfo[i].AuthAttrs, &encodedAttrs,
++                     &size);
++                else
++                    ret = CryptEncodeObjectEx(X509_ASN_ENCODING, PKCS_ATTRIBUTES,
++                     &msg_data->info->rgSignerInfo[i].AuthAttrs,
++                     CRYPT_ENCODE_ALLOC_FLAG, NULL, &encodedAttrs, &size);
+                 if (ret)
+                 {
+                     ret = CryptHashData(
+-- 
+2.51.0
+
