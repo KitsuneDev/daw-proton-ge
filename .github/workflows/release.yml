@@ -5,7 +5,8 @@ on:
     types: [ published ]
   push:
     tags:
-      - 'GE-Proton*-*'
+      - 'DAW-GE-Proton*-*'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.ref_name }}
@@ -31,7 +32,7 @@ jobs:
       shell: bash
       run: |
         git fetch origin +refs/tags/*:refs/tags/*
-       - name: Create Release
+    - name: Create Release
       id: create
       shell: bash
       run: |
@@ -42,8 +43,7 @@ jobs:
             --latest \
             --title "${{ github.ref_name }} Released" \
             --notes-from-tag \
-            --verify-tag \
-            --repo "${{ github.server_url }}/${{ github.repository }}"
+            --verify-tag
         fi
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
