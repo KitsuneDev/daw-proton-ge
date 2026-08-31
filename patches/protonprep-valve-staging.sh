@@ -394,6 +394,12 @@ apply_all_in_dir() {
 
 ### (2-7) PROTON-GE ADDITIONAL CUSTOM PATCHES ###
 
+    echo "WINE: -FLSTUDIO- Verify CMS authenticated attributes in encoded order"
+    apply_patch "../patches/proton/flstudio-crypt32-preserve-cms-authattrs-order.patch"
+
+    echo "WINE: -FLSTUDIO- Exclude allocation tail from serialized MSI string tables"
+    apply_patch "../patches/proton/nativeinstruments-msi-ignore-string-allocation-tail.patch"
+
     echo "WINE: Add an env variable to override channel count in winealsa"
     apply_patch "../patches/proton/winealsa-override-channel-count.patch"
 
