@@ -300,6 +300,9 @@ apply_all_in_dir() {
 ### END GAME PATCH SECTION ###
 
 ### (2-5) WINE HOTFIX/BACKPORT SECTION ###
+    echo "WINE: -HOTFIX- Fix DirectWrite glyph bitmap cache reuse"
+    apply_patch "../patches/wine-hotfixes/pending/dwrite-fix-glyph-bitmap-cache.patch"
+
     echo "WINE: -HOTFIX- Fix Smart Tee negotiation and V4L WoW64 media type marshaling"
     apply_all_in_dir "../patches/wine-hotfixes/qcap-dshow-fixes/"
 
