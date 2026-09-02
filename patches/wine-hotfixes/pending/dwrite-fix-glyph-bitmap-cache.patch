@@ -1,0 +1,77 @@
+From: Kitsune <kitsune@akitsune.dev>
+Date: Tue, 1 Sep 2026 20:15:00 -0400
+Subject: [PATCH] dwrite: Validate rendering mode when reusing glyph bitmaps
+
+Wine's per-font-face cache identifies glyph data by font size, glyph index,
+and measuring mode. Bitmap layout also depends on rendering mode, however.
+Aliased and antialiased rendering can produce different pitches and buffer
+sizes for the same cache key. Reusing an entry from another rendering mode
+can therefore copy a cached bitmap into a smaller destination and corrupt the
+heap.
+
+Record the rendering mode used for a cached bitmap and reuse bitmap data only
+when both its rendering mode and exact size match. Render mismatched modes
+directly, and do not mark a bitmap as cached when its allocation fails.
+
+TouchDesigner renders the same font faces, glyphs, and sizes through multiple
+rendering modes while constructing its UI font atlases. This exposed the bad
+cache reuse as splash-screen hangs and heap-corruption crashes in palette text
+operators. Keeping rendering mode as part of the cached bitmap state prevents
+the incompatible copy without adding any TouchDesigner-specific behavior.
+
+---
+ dlls/dwrite/font.c | 24 ++++++++++++++++++------
+ 1 file changed, 18 insertions(+), 6 deletions(-)
+
+diff --git a/dlls/dwrite/font.c b/dlls/dwrite/font.c
+index 3baa8d2d..b742d893 100644
+--- a/dlls/dwrite/font.c
++++ b/dlls/dwrite/font.c
+@@ -60,6 +60,7 @@ struct cache_entry
+     RECT bbox;
+     BYTE *bitmap;
+     unsigned int bitmap_size;
++    DWRITE_RENDERING_MODE1 bitmap_mode;
+     unsigned int is_1bpp : 1;
+     unsigned int has_contours : 1;
+     unsigned int has_advance : 1;
+@@ -225,22 +226,33 @@ static HRESULT dwrite_fontface_get_glyph_bitmap(struct dwrite_fontface *fontface
+     }
+     else if ((entry = fontface_get_cache_entry(fontface, bitmap_size, &key)))
+     {
+-        if (entry->has_bitmap)
++        if (entry->has_bitmap && entry->bitmap_mode == rendering_mode && entry->bitmap_size == bitmap_size)
+         {
+             memcpy(bitmap->buf, entry->bitmap, entry->bitmap_size);
++            *is_1bpp = entry->is_1bpp;
++        }
++        else if (entry->has_bitmap)
++        {
++            /* Bbox and advance entries share this key, but bitmap layout also
++             * depends on rendering mode. Render a mismatched mode directly
++             * instead of copying a differently sized cached buffer. */
++            UNIX_CALL(get_glyph_bitmap, &params);
+         }
+         else
+         {
+             params.is_1bpp = &_1bpp;
+             UNIX_CALL(get_glyph_bitmap, &params);
+
+-            entry->bitmap_size = bitmap_size;
+-            if ((entry->bitmap = malloc(entry->bitmap_size)))
++            if ((entry->bitmap = malloc(bitmap_size)))
++            {
++                entry->bitmap_size = bitmap_size;
++                entry->bitmap_mode = rendering_mode;
+                 memcpy(entry->bitmap, bitmap->buf, entry->bitmap_size);
+-            entry->is_1bpp = !!_1bpp;
+-            entry->has_bitmap = 1;
++                entry->is_1bpp = !!_1bpp;
++                entry->has_bitmap = 1;
++            }
++            *is_1bpp = _1bpp;
+         }
+-        *is_1bpp = entry->is_1bpp;
+     }
+     else
+         hr = E_FAIL;
