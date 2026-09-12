@@ -1,0 +1,30 @@
+From: DAW-GE-Proton contributors
+Date: Sat, 12 Sep 2026 18:30:00 -0400
+Subject: [PATCH] d3d11: Prepare shared resources before keyed-mutex release
+
+D3D11 rendering may remain deferred until a render pass is materialized.  In
+that state WaitForResource can see no tracked GPU access and return before the
+deferred write has been recorded or submitted.  ReleaseSync then publishes the
+new keyed-mutex value, allowing another process to acquire the texture while it
+still contains stale data.
+
+Release the texture as an external resource before waiting for it.  This ends
+pending rendering, records the required external-resource transition, and lets
+the existing wait cover the resulting GPU work before the mutex value becomes
+visible.  This fixes cross-process D3D11 shared textures without a device-wide
+flush or application-specific handling.
+---
+ src/d3d11/d3d11_resource.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/d3d11/d3d11_resource.cpp b/src/d3d11/d3d11_resource.cpp
+--- a/src/d3d11/d3d11_resource.cpp
++++ b/src/d3d11/d3d11_resource.cpp
+@@ -122,6 +122,7 @@ namespace dxvk {
+       if (!multithread.GetMultithreadProtected() && !std::exchange(s_errorShown, true))
+         Logger::warn("D3D11DXGIKeyedMutex::ReleaseSync: Called without context locking enabled.");
+
++      context->Release11on12Resource(m_resource, texture->GetImage()->info().layout);
+       D3D10DeviceLock lock = context->LockContext();
+       context->WaitForResource(*texture->GetImage(), DxvkCsThread::SynchronizeAll, D3D11_MAP_READ_WRITE, 0);
+     }

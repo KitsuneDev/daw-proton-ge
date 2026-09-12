@@ -30,6 +30,8 @@ apply_all_in_dir() {
     apply_patch "../patches/dxvk/black-desert-keep-fullscreen-on-focus-loss.patch"
     # Painkiller: Reset must apply fullscreen to the new device window (#579).
     apply_patch "../patches/dxvk/d3d9-update-device-window-on-reset.patch"
+    # Make deferred D3D11 writes visible before releasing a shared keyed mutex.
+    apply_patch "../patches/dxvk/d3d11-keyed-mutex-flush-deferred-writes.patch"
     popd
 
     pushd vkd3d-proton
