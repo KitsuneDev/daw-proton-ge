@@ -13,7 +13,7 @@ MFLAGS += V=1 VERBOSE=1
 --verbose? := --verbose
 endif
 
-SHELL := /bin/bash
+SHELL := bash
 
 ##
 ## General/global config
@@ -1825,7 +1825,7 @@ module: module32 module64
 else # outside of the container
 ###############################
 
-J := $(shell nproc)
+J := $(if $(PROTON_BUILD_JOBS),$(PROTON_BUILD_JOBS),$(shell nproc))
 
 # If CC is coming from make's defaults or nowhere, use our own default.  Otherwise respect environment.
 CCACHE_ENV := $(patsubst %,-e %,$(shell env|cut -d= -f1|grep '^CCACHE_'))

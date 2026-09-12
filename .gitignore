@@ -4,5 +4,31 @@
 /syn-*
 /wine-mono/
 
+# In-tree Proton builds and downloaded build inputs.
+/build/
+/contrib/
+
+# Nix/devenv state. Keep devenv.nix and devenv.lock tracked.
+/.devenv/
+/.direnv/
+/devenv.local.nix
+/result
+/result-*
+
+# Patch preparation and failed patch application leftovers.
+/patchlog.txt
+*.orig
+*.rej
+
+# Python caches produced by Proton's helper scripts.
+__pycache__/
+*.py[cod]
+
+# Common editor and OS metadata.
+*~
+.DS_Store
+.idea/
+.vscode/
+
 /.vagrant/
 /vagrant_share/

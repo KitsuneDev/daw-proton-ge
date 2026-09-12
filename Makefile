@@ -52,11 +52,6 @@ else
 protonsdk_version := $(shell grep '^STEAMRT_IMAGE ' Makefile.in|xargs echo|cut -d: -f2)
 endif
 
-enable_ccache := 1
-ifneq ($(enable_ccache),0)
-    CONFIGURE_CMD += --enable-ccache
-endif
-
 TOPLEVELGOALS := all any clean configure deploy downloads help install module proton protonsdk redist
 CONTAINERGOALS := $(filter-out $(TOPLEVELGOALS),$(MAKECMDGOALS))
 CONTAINERGOALS := $(filter-out $(BUILD_ROOT)/%,$(CONTAINERGOALS))
