@@ -305,6 +305,12 @@ apply_all_in_dir() {
     echo "WINE: -HOTFIX- Fix DirectWrite glyph bitmap cache reuse"
     apply_patch "../patches/wine-hotfixes/pending/dwrite-fix-glyph-bitmap-cache.patch"
 
+    echo "WINE: -HOTFIX- Include installed font files in the DirectWrite system collection"
+    apply_patch "../patches/wine-hotfixes/pending/dwrite-enumerate-windows-fonts-directory.patch"
+
+    echo "WINE: -HOTFIX- Normalize NVIDIA Vulkan driver info for Windows applications"
+    apply_patch "../patches/wine-hotfixes/pending/win32u-normalize-nvidia-vulkan-driver-info.patch"
+
     echo "WINE: -HOTFIX- Fix Smart Tee negotiation and V4L WoW64 media type marshaling"
     apply_all_in_dir "../patches/wine-hotfixes/qcap-dshow-fixes/"
 

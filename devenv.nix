@@ -11,5 +11,7 @@
     libtool
     perl
     pkg-config
+    pkgsCross.mingw32.stdenv.cc
+    pkgsCross.mingwW64.stdenv.cc
   ];
 }

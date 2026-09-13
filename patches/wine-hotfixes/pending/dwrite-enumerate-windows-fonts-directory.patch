@@ -1,0 +1,83 @@
+From: Kitsune <kitsune@akitsune.dev>
+Subject: [PATCH] dwrite: Include the Windows fonts directory in the system set
+
+Wine's GDI font startup scans both the Windows fonts directory and the
+registry, but DirectWrite currently builds its system collection from the
+registry alone. A prefix can therefore contain a usable font in
+C:\windows\fonts that GDI selects while DirectWrite reports that the same
+family does not exist. Include regular files from the Windows fonts directory
+in DirectWrite's input list. The existing sort removes duplicate paths, and
+AddFontFile rejects files that are not supported fonts.
+
+TouchDesignerWebRender triggers this mismatch when Chromium asks GDI for the
+UI font and receives Tahoma. When an older or incomplete prefix lacks the
+corresponding 64-bit registry value, Chromium cannot resolve Tahoma through
+DirectWrite, falls back recursively, and eventually overflows its stack.
+Enumerating the installed files keeps the two Wine font APIs consistent and
+lets the renderer initialize normally without an application-specific quirk.
+---
+ dlls/dwrite/main.c | 36 ++++++++++++++++++++++++++++++++++--
+ 1 file changed, 34 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/dwrite/main.c b/dlls/dwrite/main.c
+index b343d656..351b544c 100644
+--- a/dlls/dwrite/main.c
++++ b/dlls/dwrite/main.c
+@@ -1555,9 +1555,13 @@ static HRESULT create_system_path_list(WCHAR ***ret, unsigned int *ret_count)
+ {
+     unsigned int index = 0, value_size, max_name_count;
+     WCHAR **paths = NULL, *name, *value = NULL;
++    WCHAR fontdir[MAX_PATH], *filename, *path;
++    WIN32_FIND_DATAW find_data;
+     DWORD name_count, type, data_size;
+     size_t capacity = 0, count = 0;
++    unsigned int len;
+     HKEY hkey;
++    HANDLE find;
+     LONG r;
+ 
+     if (!(hkey = open_fonts_key()))
+@@ -1632,11 +1636,39 @@ static HRESULT create_system_path_list(WCHAR ***ret, unsigned int *ret_count)
+     free(value);
+     free(name);
+ 
++    RegCloseKey(hkey);
++
++    len = GetWindowsDirectoryW(fontdir, ARRAY_SIZE(fontdir));
++    if (len && len + ARRAY_SIZE(L"\\fonts\\*") <= ARRAY_SIZE(fontdir))
++    {
++        wcscpy(fontdir + len, L"\\fonts\\*");
++        filename = fontdir + len + ARRAY_SIZE(L"\\fonts\\") - 1;
++
++        if ((find = FindFirstFileW(fontdir, &find_data)) != INVALID_HANDLE_VALUE)
++        {
++            do
++            {
++                if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
++                    continue;
++
++                if (!dwrite_array_reserve((void **)&paths, &capacity, count + 1, sizeof(*paths)))
++                    break;
++
++                if (!(path = malloc((filename - fontdir + wcslen(find_data.cFileName) + 1) * sizeof(WCHAR))))
++                    break;
++
++                memcpy(path, fontdir, (filename - fontdir) * sizeof(WCHAR));
++                wcscpy(path + (filename - fontdir), find_data.cFileName);
++                paths[count++] = path;
++            } while (FindNextFileW(find, &find_data));
++
++            FindClose(find);
++        }
++    }
++
+     *ret = paths;
+     *ret_count = count;
+ 
+-    RegCloseKey(hkey);
+-
+     return S_OK;
+ }
+ 
+-- 
+2.51.0

@@ -1,0 +1,60 @@
+From: Kitsune <kitsune@akitsune.dev>
+Subject: [PATCH] win32u: Normalize NVIDIA Vulkan driver information
+
+NVIDIA's Linux Vulkan driver may expose driverInfo with a Linux package
+suffix, for example "610.57.04", while Windows applications expect NVIDIA's
+major.minor form. Reconstruct that form from the authoritative packed
+driverVersion while leaving driverVersion itself unchanged.
+
+TouchDesigner, for example, validates driverInfo as digits, one dot, then
+digits before it classifies a 0x10de Vulkan device as NVIDIA. Passing the Linux
+suffix through unchanged therefore disables its NVDEC path before CUDA is
+initialized. Applying the normalization at the Vulkan boundary also gives
+helper processes and other Windows applications a consistent Windows-style
+value.
+
+Handle both Vulkan 1.2 properties and the equivalent driver-properties
+extension structure. Restrict the change to NVIDIA's proprietary Vulkan
+driver.
+---
+ dlls/win32u/vulkan.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
+index 911db797..00000000 100644
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -1875,6 +1875,23 @@ static void fixup_device_id_vulkan( UINT *vendor_id, UINT *device_id )
+     *device_id = id->device;
+ }
+ 
++static void fixup_nvidia_driver_info( VkPhysicalDeviceProperties2 *properties2 )
++{
++    VkPhysicalDeviceVulkan12Properties *vk12;
++    VkPhysicalDeviceDriverProperties *driver;
++    UINT version = properties2->properties.driverVersion;
++
++    if (properties2->properties.vendorID != 0x10de) return;
++
++    vk12 = find_vk_struct( properties2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES );
++    if (vk12 && vk12->driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
++        snprintf( vk12->driverInfo, sizeof(vk12->driverInfo), "%u.%u", version >> 22, (version >> 14) & 0xff );
++
++    driver = find_vk_struct( properties2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES );
++    if (driver && driver->driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
++        snprintf( driver->driverInfo, sizeof(driver->driverInfo), "%u.%u", version >> 22, (version >> 14) & 0xff );
++}
++
+ static void get_physical_device_properties2( struct vulkan_physical_device *physical_device, VkPhysicalDeviceProperties2 *properties2,
+                                              PFN_vkGetPhysicalDeviceProperties2 p_vkGetPhysicalDeviceProperties2 )
+ {
+@@ -1922,6 +1939,7 @@ static void get_physical_device_properties2( struct vulkan_physical_device *phys
+     }
+ 
+     fixup_device_id_vulkan( &properties2->properties.vendorID, &properties2->properties.deviceID );
++    fixup_nvidia_driver_info( properties2 );
+ 
+     TRACE( "deviceName:%s deviceLUIDValid:%d LUID:%08x:%08x.\n",
+            properties2->properties.deviceName, device_luid_valid, luid.HighPart, luid.LowPart );
+-- 
+2.51.0
